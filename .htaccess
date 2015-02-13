@@ -1,6 +1,6 @@
 <IfModule mod_rewrite.c>
 RewriteEngine on
 
-RewriteRule	^(index\.php)$					index.php			[L]
-RewriteRule	^(.+/)*([0-9a-zA-Z_\-\=\.]+)$	%1index.php?url=$2	[L]
+RewriteRule	^(index\.php)$			$1					[NE,QSA,L]
+RewriteRule	^([0-9a-zA-Z_\-\=\.]+)$	index.php?url=$1	[NE,QSA,L]
 </IfModule>
