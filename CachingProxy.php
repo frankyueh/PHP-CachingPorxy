@@ -15,8 +15,11 @@ class CachingConfigs {
 	const CACHE_EXPIRE_TIME = 86400; // 24 * 60 * 60
 	
 	// Maximum size of cached file size (in byte)
-	const CACHE_FILE_MAX_SIZE = 10485760; // 10 * 1024 * 1024
-
+	const CACHE_FILE_MAX_SIZE = 3145728; // 3 * 1024 * 1024
+	
+	// Socket timeout for file_get_contents (in second)
+	// NOTE: leave 0 for using php.ini default setting 'default_socket_timeout'
+	const CACHE_SOCKET_TIMEOUT = 3;
 }
 
 abstract class CachingProxy {
@@ -56,11 +59,26 @@ class CachingObject {
 
 	private $_cache_file_header = false;
 	private $_cache_file_content = false;
+	
+	private static function getStreamContextOptions() {
+		
+		return array(
+			'http' => array(
+				'timeout' => 
+					CachingConfigs::CACHE_SOCKET_TIMEOUT > 0 ?
+						CachingConfigs::CACHE_SOCKET_TIMEOUT : (int)ini_get('default_socket_timeout')
+			)
+		);
+	}
 
 	// Note that the HTTP wrapper has a hard limit of 1024 characters for the header lines.
 	// (Can use cURL extension to fix this problem)
 	private static function getHeadersAndContents($raw_url) {
-		$contents = @file_get_contents($raw_url, null, null, 0, CachingConfigs::CACHE_FILE_MAX_SIZE);
+		
+		$context = stream_context_create(self::getStreamContextOptions());
+		$contents = @file_get_contents(
+				$raw_url, false, $context, 0, CachingConfigs::CACHE_FILE_MAX_SIZE);
+		
 		if (strlen($contents) >= CachingConfigs::CACHE_FILE_MAX_SIZE) {
 			throw new CachingProxyException(
 					'Unable to cache file which size reach the maximum limit of '.
