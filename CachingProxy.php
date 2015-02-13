@@ -187,25 +187,29 @@ class CachingObject {
 abstract class CachingProxyHelper {
 
 	public static function encodeProxyUrl($raw_url) {
+		
 		$url_path = parse_url($raw_url, PHP_URL_PATH);
 		if ($url_path === false) {
 			return false;
 		}
+		
+		$url_path_base = basename($url_path);
+		$ext_rpos = strrpos($url_path_base, '.');
+		$ext_name = $ext_rpos !== false ? substr($url_path_base, $ext_rpos) : '';
 
-		$names = explode('.', basename($url_path));
-		$ext = count($names) > 1 ? '.' . array_pop($names) : '';
-
-		return
-				rawurlencode(strtr(base64_encode($raw_url), '+/', '-_')) . $ext;
+		return rawurlencode(strtr(base64_encode($raw_url), '+/', '-_')) . $ext_name;
 	}
 
 	public static function decodeProxyUrl($encoded_url) {
-		$names = explode('.', rawurldecode($encoded_url));
+		
+		$ext_rpos = strrpos($encoded_url, '.');
+		$encoded_url_noext = $ext_rpos !== false ? substr($encoded_url, 0, $ext_rpos) : '';
 
 		return
 				filter_var(
-				base64_decode(strtr(array_shift($names), '-_', '+/')), FILTER_SANITIZE_URL
-		);
+						base64_decode(strtr(rawurldecode($encoded_url_noext), '-_', '+/')),
+						FILTER_SANITIZE_URL
+				);
 	}
 
 }
