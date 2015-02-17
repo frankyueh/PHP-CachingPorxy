@@ -37,158 +37,32 @@ abstract class CachingProxy {
 			throw new CachingProxyException('Empty url request.');
 		}
 
-		$raw_url = CachingProxyHelper::decodeProxyUrl($encoded_url);
-		if (empty($raw_url)) {
+		$url = CachingProxyHelper::decodeProxyUrl($encoded_url);
+		if (empty($url)) {
 			throw new CachingProxyException('Invalid url request.');
 		}
 
 		$cache_object = new CachingObject();
 		
-		$cache_object->cacheFile(
-				$raw_url,
-				!empty(CachingConfigs::GET_REFRESH_VAR) &&
-					filter_has_var(INPUT_GET, CachingConfigs::GET_REFRESH_VAR)
-		);
+		$cache_object->setUrl($url);
 		
+		if (!empty(CachingConfigs::GET_REFRESH_VAR) &&
+					filter_has_var(INPUT_GET, CachingConfigs::GET_REFRESH_VAR)) {
+			
+			$cache_object->setForceRefresh($url);
+		}
+		
+		$cache_object->cacheFile();
 		$cache_object->outputFile();
-	}
-
-}
-
-class CachingObject {
-
-	private $_cache_file_header = false;
-	private $_cache_file_content = false;
-	
-	private static function getStreamContextOptions() {
-		
-		return array(
-			'http' => array(
-				'timeout' => 
-					CachingConfigs::CACHE_SOCKET_TIMEOUT > 0 ?
-						CachingConfigs::CACHE_SOCKET_TIMEOUT : (int)ini_get('default_socket_timeout')
-			)
-		);
-	}
-
-	// Note that the HTTP wrapper has a hard limit of 1024 characters for the header lines.
-	// (Can use cURL extension to fix this problem)
-	private static function getHeadersAndContents($raw_url) {
-		
-		$context = stream_context_create(self::getStreamContextOptions());
-		$contents = @file_get_contents(
-				$raw_url, false, $context, 0, CachingConfigs::CACHE_FILE_MAX_SIZE);
-		
-		if (strlen($contents) >= CachingConfigs::CACHE_FILE_MAX_SIZE) {
-			throw new CachingProxyException(
-					'Unable to cache file which size reach the maximum limit of '.
-					CachingConfigs::CACHE_FILE_MAX_SIZE.'.');
-		}
-		if ($contents === false) {
-			throw new CachingProxyException('Unable get remote contents.');
-		}
-		return array(
-			'header' => $http_response_header,
-			'content' => $contents
-		);
-	}
-
-	private function setCachFiles($raw_url) {
-		if (empty($raw_url)) {
-			throw new CachingProxyException('Empty url set.');
-		}
-		
-		$this->_cache_file_header = CachingConfigs::CACHE_FILE_ROOT . sha1($raw_url) . '.header';
-		$this->_cache_file_content = CachingConfigs::CACHE_FILE_ROOT . sha1($raw_url) . '.content';
-	}
-
-	private function isSetCacheFiles() {
-		return !empty($this->_cache_file_header) && !empty($this->_cache_file_content);
-	}
-
-	public function __construct() {
-		
-	}
-
-	public function cacheFile($raw_url, $force_refresh = false) {
-
-		$this->setCachFiles($raw_url);
-
-		$fp_header = fopen($this->_cache_file_header, 'c');
-		if (!flock($fp_header, LOCK_EX)) {
-			throw new CachingProxyException('Cache file exclusive lock failed.');
-		}
-		
-		try {
-			if ($force_refresh ||
-					!file_exists($this->_cache_file_content) ||
-						@filemtime($this->_cache_file_content) < (time() - CachingConfigs::CACHE_EXPIRE_TIME)) {
-
-				$contents = self::getHeadersAndContents($raw_url);
-
-				$serialized_header = serialize($contents['header']);
-				if (fwrite($fp_header, $serialized_header) !== strlen($serialized_header)) {
-					throw new CachingProxyException('Header file write failed unexpected.');
-				}
-
-				if (file_put_contents($this->_cache_file_content, $contents['content'], LOCK_EX) !== strlen($contents['content'])) {
-					throw new CachingProxyException('Content file write failed unexpected.');
-				}
-			}
-			
-		} catch (\Exception $ex) {
-			throw $ex;
-			
-		} finally {
-			flock($fp_header, LOCK_UN);
-			fclose($fp_header);
-		}
-	}
-
-	public function outputFile() {
-		if (!$this->isSetCacheFiles()) {
-			throw new CachingProxyException('Cache file is not set.');
-		}
-
-		$fp_header = fopen($this->_cache_file_header, 'r');
-		if (!flock($fp_header, LOCK_SH)) {
-			throw new CachingProxyException('Cache file shared lock failed.');
-		}
-		
-		try {
-			$header_file_size = filesize($this->_cache_file_header);
-			$unserialized_headers = fread($fp_header, $header_file_size);
-			if (strlen($unserialized_headers) != $header_file_size) {
-				throw new CachingProxyException('Header file read failed unexpected.');
-			}
-
-			$headers = @unserialize($unserialized_headers);
-			if ($headers === false) {
-				throw new CachingProxyException('Header file unserialize failed.');
-			}
-
-			foreach ($headers as $header) {
-				header($header);
-			}
-
-			echo @file_get_contents($this->_cache_file_content);
-			
-		} catch (\Exception $ex) {
-			throw $ex;
-			
-		} finally {
-			flock($fp_header, LOCK_UN);
-			fclose($fp_header);
-		}
 	}
 
 }
 
 abstract class CachingProxyHelper {
 
-	public static function encodeProxyUrl($raw_url) {
+	public static function encodeProxyUrl($url) {
 		
-		$url_path = parse_url($raw_url, PHP_URL_PATH);
+		$url_path = parse_url($url, PHP_URL_PATH);
 		if ($url_path === false) {
 			return false;
 		}
@@ -197,7 +71,7 @@ abstract class CachingProxyHelper {
 		$ext_rpos = strrpos($url_path_base, '.');
 		$ext_name = $ext_rpos !== false ? substr($url_path_base, $ext_rpos) : '';
 
-		return rawurlencode(strtr(base64_encode($raw_url), '+/', '-_')) . $ext_name;
+		return rawurlencode(strtr(base64_encode($url), '+/', '-_')) . $ext_name;
 	}
 
 	public static function decodeProxyUrl($encoded_url) {
@@ -226,6 +100,197 @@ class CachingProxyException extends Exception {
 	// custom string representation of object
 	public function __toString() {
 		return __CLASS__ . ": [{$this->code}]: {$this->message}\n";
+	}
+
+}
+
+class CachingObject {
+
+	private $_url = false;
+	private $_parsed_url = false;
+	private $_cache_header_file = false;
+	private $_cache_content_file = false;
+	private $_force_refresh = false;
+	
+	private function setCachFiles($url) {
+		
+		$this->_cache_header_file = CachingConfigs::CACHE_FILE_ROOT . sha1($url) . '.header';
+		$this->_cache_content_file = CachingConfigs::CACHE_FILE_ROOT . sha1($url) . '.content';
+	}
+
+	private function isSetCacheFiles() {
+		
+		return !empty($this->_cache_header_file) && !empty($this->_cache_content_file);
+	}
+
+	private function getStreamContextOptions() {
+		
+		$request_header =
+				'GET ' . (isset($this->_parsed_url['path']) ? $this->_parsed_url['path'] : '/') . ' HTTP/1.1\r\n' .
+				'Host: ' . $this->_parsed_url['host'] . '\r\n' .
+				'Connection: close\r\n\r\n';
+		
+		return array(
+			'http' => array(
+				'header' => $request_header ,
+				'timeout' => 
+					CachingConfigs::CACHE_SOCKET_TIMEOUT > 0 ?
+						CachingConfigs::CACHE_SOCKET_TIMEOUT : (int)ini_get('default_socket_timeout')
+			)
+		);
+	}
+
+	// Note that the HTTP wrapper has a hard limit of 1024 characters for the header lines.
+	// (Can use cURL extension to fix this problem)
+	private function getHeadersAndContents() {
+		
+		$context = stream_context_create($this->getStreamContextOptions());
+		$contents = @file_get_contents(
+				$this->_url, false, $context, 0, CachingConfigs::CACHE_FILE_MAX_SIZE);
+		
+		if ($http_response_header === false) {
+			throw new CachingProxyException('Unable to get remote contents from: ' . $this->_url);
+		}
+		
+		if (strlen((string)$contents) >= CachingConfigs::CACHE_FILE_MAX_SIZE) {
+			throw new CachingProxyException(
+					'Unable to cache file which size reach the maximum limit of '.
+					CachingConfigs::CACHE_FILE_MAX_SIZE.'.');
+		}
+		
+		return array(
+			'header' => $http_response_header,
+			'content' => $contents
+		);
+	}
+	
+	public function __construct() {
+		
+	}
+	
+	public function setUrl($url) {
+		
+		if (empty($url)) {
+			throw new CachingProxyException('Empty url set.');
+		}
+		
+		$this->_url = $url;
+		$this->_parsed_url = parse_url($url);
+		if (!$this->_parsed_url) {
+			throw new CachingProxyException('Invalid url set.');
+		}
+		
+		$this->setCachFiles($url);
+	}
+	
+	public function setForceRefresh($val = true) {
+		$this->_force_refresh = $val;
+	}
+	
+	public function isCacheFileExists() {
+		
+		if (!$this->isSetCacheFiles()) {
+			throw new CachingProxyException('Cache file is not set.');
+		}
+		
+		return file_exists($this->_cache_header_file);
+	}
+
+	public function cacheFile() {
+
+		if (!$this->isSetCacheFiles()) {
+			throw new CachingProxyException('Cache file is not set.');
+		}
+
+		$ignore_user_abort = ignore_user_abort(true);
+		$fp_header = fopen($this->_cache_header_file, 'c');
+		try {
+			if ($fp_header === false) {
+				throw new CachingProxyException('Unable to create/open cached file header.');
+			}
+			
+			if (!flock($fp_header, LOCK_EX)) {
+				throw new CachingProxyException('Cache file exclusive lock failed.');
+			}
+			
+			if ($this->_force_refresh ||
+					!file_exists($this->_cache_content_file) ||
+						@filemtime($this->_cache_content_file) < (time() - CachingConfigs::CACHE_EXPIRE_TIME)) {
+
+				$contents = $this->getHeadersAndContents();
+
+				$serialized_headers = serialize($contents['header']);
+				if (fwrite($fp_header, $serialized_headers) !== strlen($serialized_headers)) {
+					throw new CachingProxyException('Header file write failed unexpected.');
+				}
+
+				if (file_put_contents($this->_cache_content_file, (string)$contents['content'], LOCK_EX) !==
+						strlen((string)$contents['content'])) {
+					throw new CachingProxyException('Content file write failed unexpected.');
+				}
+
+			}
+			
+		} catch (\Exception $ex) {
+			throw $ex;
+			
+		} finally {
+			if ($fp_header !== false) {
+				flock($fp_header, LOCK_UN);
+				fclose($fp_header);
+			}
+			ignore_user_abort($ignore_user_abort);
+		}
+	}
+
+	public function outputFile() {
+		
+		if (!$this->isSetCacheFiles()) {
+			throw new CachingProxyException('Cache file is not set.');
+		}
+		
+		if (!file_exists($this->_cache_header_file)) {
+			throw new CachingProxyException('Cache file is not exists.');
+		}
+
+		$fp_header = fopen($this->_cache_header_file, 'r');
+		try {
+			if ($fp_header === false) {
+				throw new CachingProxyException('Unable to open cached file header.');
+			}
+			
+			if (!flock($fp_header, LOCK_SH)) {
+				throw new CachingProxyException('Cache file shared lock failed.');
+			}
+
+			$header_file_size = filesize($this->_cache_header_file);
+			$unserialized_headers = fread($fp_header, $header_file_size);
+			if (strlen($unserialized_headers) != $header_file_size) {
+				throw new CachingProxyException('Header file read failed unexpected.');
+			}
+
+			$headers = @unserialize($unserialized_headers);
+			if ($headers === false) {
+				throw new CachingProxyException('Header file unserialize failed.');
+			}
+
+			if ($headers) {
+				foreach ($headers as $header) {
+					header($header);
+				}
+			}
+			
+			echo @file_get_contents($this->_cache_content_file);
+			
+		} catch (\Exception $ex) {
+			throw $ex;
+			
+		} finally {
+			if ($fp_header !== false) {
+				flock($fp_header, LOCK_UN);
+				fclose($fp_header);
+			}
+		}
 	}
 
 }

@@ -1,6 +1,11 @@
-<IfModule mod_rewrite.c>
-RewriteEngine on
 
-RewriteRule	^(index\.php)$			$1					[NE,QSA,L]
-RewriteRule	^([0-9a-zA-Z_\-\=\.]+)$	index.php?url=$1	[NE,QSA,L]
+Require all granted
+
+<IfModule mod_rewrite.c>
+	RewriteEngine on
+
+	RewriteRule	^(index\.php)$				$1					[NE,QSA,L]
+	RewriteRule	^(request\.php)$			$1					[NE,QSA,L]
+	RewriteRule	^(testfile\.php)$			$1					[NE,QSA,L]
+	RewriteRule	^([0-9a-zA-Z_\-\=\.]+)$		request.php?url=$1	[NE,QSA,L]
 </IfModule>
