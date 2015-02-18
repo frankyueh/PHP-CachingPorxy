@@ -19,7 +19,7 @@ class CachingConfigs {
 	
 	// Socket timeout for file_get_contents (in second)
 	// NOTE: leave 0 for using php.ini default setting 'default_socket_timeout'
-	const CACHE_SOCKET_TIMEOUT = 3;
+	const CACHE_SOCKET_TIMEOUT = 5;
 }
 
 abstract class CachingProxy {
@@ -125,14 +125,9 @@ class CachingObject {
 
 	private function getStreamContextOptions() {
 		
-		$request_header =
-				'GET ' . (isset($this->_parsed_url['path']) ? $this->_parsed_url['path'] : '/') . ' HTTP/1.1\r\n' .
-				'Host: ' . $this->_parsed_url['host'] . '\r\n' .
-				'Connection: close\r\n\r\n';
-		
 		return array(
 			'http' => array(
-				'header' => $request_header ,
+				'method' => 'GET',
 				'timeout' => 
 					CachingConfigs::CACHE_SOCKET_TIMEOUT > 0 ?
 						CachingConfigs::CACHE_SOCKET_TIMEOUT : (int)ini_get('default_socket_timeout')
