@@ -77,7 +77,7 @@ abstract class CachingProxyHelper {
 	public static function decodeProxyUrl($encoded_url) {
 		
 		$ext_rpos = strrpos($encoded_url, '.');
-		$encoded_url_noext = $ext_rpos !== false ? substr($encoded_url, 0, $ext_rpos) : '';
+		$encoded_url_noext = $ext_rpos !== false ? substr($encoded_url, 0, $ext_rpos) : $encoded_url;
 
 		return
 				filter_var(
