@@ -9,7 +9,7 @@ class CachingConfigs {
 	const GET_REFRESH_VAR = 'refresh';
 	
 	// Where cached file stored (must tail with '/')
-	const CACHE_FILE_ROOT = 'c:/webserver/tmp/';
+	const CACHE_FILE_ROOT = 'path/to/tmp';
 	
 	// Expiring time for cached fie (in second)
 	const CACHE_EXPIRE_TIME = 86400; // 24 * 60 * 60
